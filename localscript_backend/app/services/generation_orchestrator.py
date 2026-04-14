@@ -87,7 +87,6 @@ class GenerationOrchestrator:
         session_title: str | None = None,
         original_user_message: str | None = None,
         context_mode: str = "new_task",
-        previous_final_code: str | None = None,
     ) -> PipelineResult:
         used_history = False
         effective_history: list[ChatMessage] = []
@@ -108,12 +107,11 @@ class GenerationOrchestrator:
         elif session_id:
             session = await self._pipeline_trace_service.get_session_by_session_id(session_id)
 
-        previous_assistant_code = previous_final_code
-        persisted_user_prompt = analysis_task or original_user_message or task
+        previous_assistant_code = self._extract_previous_assistant_code(effective_history)
 
         run = await self._pipeline_trace_service.start_run(
             session=session,
-            user_prompt=persisted_user_prompt,
+            user_prompt=analysis_task or task,
             validate_runtime=validate_runtime,
             used_history=used_history,
         )
@@ -132,14 +130,6 @@ class GenerationOrchestrator:
 
         started = perf_counter()
         effective_analysis_task = analysis_task or task
-
-        if context_mode == "clarification" and original_user_message:
-            effective_analysis_task = (
-                f"{effective_analysis_task.strip()}\n\n"
-                "Уточнения пользователя:\n"
-                f"{original_user_message.strip()}"
-            )
-
         analysis = self._task_analysis_service.analyze(effective_analysis_task)
         await self._pipeline_trace_service.add_step(
             run=run,
@@ -197,15 +187,6 @@ class GenerationOrchestrator:
             task_contract=task_contract,
             max_items=2,
         )
-        local_templates_payload = [
-            {
-                "key": item.key,
-                "title": item.title,
-                "when_to_use": item.when_to_use,
-                "lua_example": item.lua_example,
-            }
-            for item in selected_templates
-        ]
         selected_template_keys = [item.key for item in selected_templates]
 
         started = perf_counter()
@@ -233,7 +214,7 @@ class GenerationOrchestrator:
             warnings=[],
         )
 
-        if analysis.needs_clarification and context_mode != "clarification":
+        if analysis.needs_clarification:
             score, reasons = self._confidence_service.calculate_for_clarification(
                 questions_count=len(analysis.questions),
                 used_history=used_history,
@@ -289,8 +270,6 @@ class GenerationOrchestrator:
                 confidence_reasons=reasons,
                 task_contract=task_contract,
                 clarification_questions=analysis.questions,
-                evaluation_report=evaluation_report,
-                diff_text=None,
             )
 
             return PipelineResult(
@@ -327,7 +306,6 @@ class GenerationOrchestrator:
             task=task,
             history=effective_history,
             task_contract=task_contract,
-            local_templates=local_templates_payload,
         )
         await self._pipeline_trace_service.add_step(
             run=run,
@@ -472,8 +450,6 @@ class GenerationOrchestrator:
                 confidence_reasons=reasons,
                 task_contract=task_contract,
                 clarification_questions=[],
-                evaluation_report=evaluation_report,
-                diff_text=diff_text,
             )
 
             return PipelineResult(
@@ -651,8 +627,6 @@ class GenerationOrchestrator:
                     confidence_reasons=reasons,
                     task_contract=task_contract,
                     clarification_questions=[],
-                    evaluation_report=evaluation_report,
-                    diff_text=diff_text,
                 )
 
                 return PipelineResult(
@@ -701,6 +675,32 @@ class GenerationOrchestrator:
             diff_text=None,
         )
 
+        if session_id and self._chat_history_service is not None:
+            failed_text_parts: list[str] = [
+                "Не удалось получить полностью валидный результат.",
+            ]
+
+            if current_code.strip():
+                failed_text_parts.append("Последняя версия Lua-кода:")
+                failed_text_parts.append(current_code.strip())
+
+            if current_validation.errors:
+                failed_text_parts.append("")
+                failed_text_parts.append("Ошибки валидации:")
+                failed_text_parts.extend(f"- {item}" for item in current_validation.errors)
+
+            if current_validation.warnings:
+                failed_text_parts.append("")
+                failed_text_parts.append("Предупреждения:")
+                failed_text_parts.extend(f"- {item}" for item in current_validation.warnings)
+
+            await self._chat_history_service.append_message(
+                session_id=session_id,
+                role="assistant",
+                content="\n".join(failed_text_parts).strip(),
+                title=session_title,
+            )
+
         await self._pipeline_trace_service.finalize_run(
             run=run,
             status="failed_validation",
@@ -713,8 +713,6 @@ class GenerationOrchestrator:
             confidence_reasons=reasons,
             task_contract=task_contract,
             clarification_questions=[],
-            evaluation_report=evaluation_report,
-            diff_text=None,
         )
 
         return PipelineResult(
@@ -738,13 +736,21 @@ class GenerationOrchestrator:
             diff_text=None,
         )
 
+    def _extract_previous_assistant_code(
+        self,
+        history: list[ChatMessage],
+    ) -> str | None:
+        for msg in reversed(history):
+            if msg.role == "assistant" and msg.content.strip():
+                return msg.content.strip()
+        return None
+
     def _build_diff_if_needed(
         self,
         previous_code: str | None,
         current_code: str,
         context_mode: str,
     ) -> str | None:
-
         if context_mode not in {"refinement", "clarification"}:
             return None
         if not previous_code:

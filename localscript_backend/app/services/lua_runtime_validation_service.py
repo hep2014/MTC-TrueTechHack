@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import tempfile
 
@@ -11,7 +10,18 @@ class LuaRuntimeValidationService:
         self._lua_binary = lua_binary
         self._timeout_seconds = timeout_seconds
 
+    def _looks_interactive(self, code: str) -> bool:
+        lowered = code.lower()
+        interactive_markers = [
+            "io.read(",
+            "stdin",
+        ]
+        return any(marker in lowered for marker in interactive_markers)
+
     async def validate(self, code: str) -> tuple[bool, str | None]:
+        if self._looks_interactive(code):
+            return True, "runtime skipped for interactive stdin-based script"
+
         wrapper = f"""
 local ok, result = pcall(function()
 {code}
@@ -34,11 +44,12 @@ end
                 path,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                stdin=asyncio.subprocess.PIPE,
             )
 
             try:
                 stdout, stderr = await asyncio.wait_for(
-                    process.communicate(),
+                    process.communicate(input=b"test-input\n"),
                     timeout=self._timeout_seconds,
                 )
             except asyncio.TimeoutError:

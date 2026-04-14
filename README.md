@@ -1,27 +1,112 @@
-# MTS Local Stack
+# MTS Local Lua Agent
 
-Проект запускается через Docker Compose. Есть два режима:
+Проект разработан в рамках кейса МТС и представляет собой локальный AI-агент для генерации Lua-кода с контролем качества, валидацией и поддержкой диалогового взаимодействия.
 
-- базовый: `db + app + frontend`
-- полный: `db + ollama + ollama-init + app + frontend`
+В отличие от классических решений, система реализует **полный управляемый pipeline генерации**, включая анализ задачи, генерацию, валидацию, автоматическое исправление и оценку качества результата.
 
-## Что поднимается
+---
 
-### Базовый режим
+# Проблематика
 
-- `db` - Postgres
-- `app` - FastAPI backend
-- `frontend` - Vite frontend из `./frontend`
+Современные LLM-инструменты для генерации кода сталкиваются с рядом критических проблем:
 
-В этом режиме `Ollama` должен быть запущен отдельно, вне Compose.
+- генерация некорректного или неисполняемого кода  
+- отсутствие проверки результата  
+- невозможность адаптации под конкретный runtime (например, Lua / LowCode)  
+- «чёрный ящик» без объяснения, почему ответ считается корректным  
+- отсутствие воспроизводимости (зависимость от внешних API)  
 
-### Полный режим
+В контексте МТС это особенно критично, так как:
 
-- `db` - Postgres
-- `ollama` - LLM server
-- `ollama-init` - один раз скачивает модель
-- `app` - FastAPI backend
-- `frontend` - Vite frontend из `./frontend`
+- требуется генерация кода под контролируемые среды (LowCode, workflow)
+- важно исключить использование недопустимых API
+- необходимо обеспечить предсказуемость и повторяемость результата
+
+---
+
+# Наше решение
+
+Мы реализовали систему управляемой генерации кода, которая:
+
+- анализирует задачу перед генерацией  
+- определяет доменный контекст (general / lowcode)  
+- применяет шаблоны и правила  
+- валидирует код на нескольких уровнях  
+- выполняет runtime-проверку  
+- автоматически исправляет ошибки  
+- рассчитывает confidence-score  
+- поддерживает диалог и уточнение задачи  
+
+Система полностью работает локально через Ollama и Docker.
+
+---
+
+# Архитектура
+
+Система состоит из нескольких компонентов:
+
+- **backend (FastAPI)** — orchestration pipeline  
+- **frontend (Vite)** — пользовательский интерфейс  
+- **PostgreSQL** — хранение сессий и pipeline  
+- **Ollama** — локальная LLM  
+
+---
+
+### Структура проекта
+
+
+mts/
+├── localscript_backend/ # Backend (FastAPI + pipeline)
+│ ├── app/
+│ │ ├── services/ # бизнес-логика и pipeline
+│ │ ├── routers/ # API
+│ │ ├── models/ # ORM / схемы
+│ │ └── main.py # entrypoint
+│ ├── alembic/ # миграции БД
+│ ├── Dockerfile
+│ └── docker-entrypoint.sh
+│
+├── frontend/ # Vite frontend
+│ ├── src/
+│ ├── index.html
+│ ├── package.json
+│ └── Dockerfile
+│
+├── docker-compose.yml # базовый стек
+├── docker-compose.ollama.yml # overlay с LLM
+└── README.md
+
+
+---
+
+### Pipeline генерации
+
+Каждый запрос проходит следующие этапы:
+
+1. **Task Analysis** — разбор задачи  
+2. **Template Selection** — подбор шаблонов  
+3. **Generation** — генерация кода  
+4. **Validation**:
+   - syntax
+   - policy
+   - domain
+   - runtime
+   - scenario
+5. **Repair (опционально)** — исправление ошибок  
+6. **Evaluation** — формирование отчёта и confidence  
+
+---
+
+### Запуск проекта
+
+Проект запускается через Docker Compose.
+
+Есть два режима:
+
+- базовый  
+- полный (с Ollama)
+
+---
 
 ## Требования
 
@@ -30,176 +115,124 @@
 
 Проверка:
 
-```bash
+```
 docker --version
 docker compose version
 ```
 
-## Быстрый старт
+**Базовый запуск**
 
-### Вариант 1. Базовый режим
+Поднимает:
 
-Поднимает `db`, `app` и `frontend`.
+- PostgreSQL
+- backend
+- frontend
 
-```bash
+```
 docker compose up -d --build
 ```
 
-После запуска будут доступны:
-
-- frontend: `http://localhost:5173`
-- backend: `http://localhost:8000`
-- healthcheck backend: `http://localhost:8000/health`
-
-Остановить стек:
-
-```bash
-docker compose down
+После запуска:
 ```
+frontend: http://localhost:5173
+backend: http://localhost:8000
+health: http://localhost:8000/health
+Как работает backend при старте
+```
+Контейнер backend:
+- ждёт доступность базы данных
+- выполняет миграции Alembic
+- запускает FastAPI
 
-## Как работает backend при старте
+Это гарантирует, что база всегда в актуальном состоянии.
 
-Контейнер `app` запускается не сразу. Он:
+**Ollama (в базовом режиме)**
 
-1. ждёт готовности Postgres
-2. выполняет `alembic upgrade head`
-3. только потом стартует FastAPI
-
-Это уже встроено в Docker-образ backend.
-
-## Ollama в базовом режиме
-
-В базовом режиме backend ожидает, что Ollama уже доступен по адресу:
-
-```text
+Backend ожидает Ollama по адресу:
+```
 http://host.docker.internal:11434
 ```
 
-То есть Ollama можно держать отдельно на хост-машине.
-
-По умолчанию используется модель:
-
-```text
+Модель по умолчанию:
+```
 qwen2.5:7b
 ```
-
-Если Ollama у тебя запущен на другом адресе или порту, можно переопределить переменную окружения перед запуском:
-
-```bash
+Можно переопределить:
+```
 OLLAMA_BASE_URL=http://host.docker.internal:11434 docker compose up -d --build
 ```
+### Полный запуск (вместе с LLM)
 
-Для PowerShell:
-
-```powershell
-$env:OLLAMA_BASE_URL="http://host.docker.internal:11434"
-docker compose up -d --build
 ```
-
-## Полный запуск вместе с Ollama
-
-Если хочешь поднимать и Ollama внутри Compose, используй оба файла:
-
-```bash
 docker compose -f docker-compose.yml -f docker-compose.ollama.yml up -d --build
 ```
+Поднимается:
 
-В этом режиме:
+- Ollama
+- загрузка модели
+- backend подключается внутри сети
 
-- `ollama` хранит данные в volume, поэтому модель не скачивается заново при каждом запуске
-- `ollama-init` один раз подтягивает модель
-- `app` подключается к Ollama внутри docker-сети
-
-Остановить полный стек:
-
-```bash
+Остановка:
+```
 docker compose -f docker-compose.yml -f docker-compose.ollama.yml down
 ```
 
-## Полезные команды
+**Полезные команды**
 
-Посмотреть статус контейнеров:
-
-```bash
+Статус:
+```
 docker compose ps
 ```
-
-Посмотреть логи backend:
-
-```bash
+Логи backend:
+```
 docker compose logs app
 ```
-
-Посмотреть логи frontend:
-
-```bash
+Логи frontend:
+```
 docker compose logs frontend
 ```
-
-Посмотреть логи полного стека с Ollama:
-
-```bash
+Полный стек:
+```
 docker compose -f docker-compose.yml -f docker-compose.ollama.yml logs
 ```
 
-## Полезные переменные
+### Переменные окружения
 
-Базовые значения уже зашиты в `docker-compose.yml`, но при необходимости можно переопределять:
-
-- `POSTGRES_DB`
-- `POSTGRES_USER`
-- `POSTGRES_PASSWORD`
-- `OLLAMA_BASE_URL`
-- `OLLAMA_MODEL`
-- `REQUEST_TIMEOUT_SECONDS`
-- `USE_STUB_MODEL`
-
-Пример для PowerShell:
-
-```powershell
-$env:POSTGRES_PASSWORD="mysecret"
-$env:OLLAMA_MODEL="qwen2.5:7b"
-docker compose up -d --build
+Основные:
 ```
-
-## Проверка после запуска
-
-Проверь backend:
-
-```bash
+POSTGRES_DB
+POSTGRES_USER
+POSTGRES_PASSWORD
+OLLAMA_BASE_URL
+OLLAMA_MODEL
+REQUEST_TIMEOUT_SECONDS
+```
+Пример:
+```
+POSTGRES_PASSWORD=mysecret docker compose up -d --build
+```
+Проверка работы
+````
 curl http://localhost:8000/health
-```
-
+````
 Ожидаемый ответ:
-
-```json
+```
 {"status":"ok"}
 ```
 
-Проверь frontend, открыв в браузере:
+### Участники
 
-```text
-http://localhost:5173
-```
+- [Илья Матвеев](http://t.me/hep2014) - backend
+- [Анастасия Кабанова](https://t.me/anastaness) - frontend, визуализация
+- [Мясников Евгений](https://t.me/Myzn1k) - devops
+- [Щеголев Иван](https://t.me/hep2O14) - frontend
+- [Косинский Эдуард](https://t.me/tominvst) - backend
 
-## Частые сценарии
-
-### Пересобрать и заново запустить
-
-```bash
-docker compose up -d --build
-```
-
-### Полностью остановить и удалить контейнеры
-
-```bash
-docker compose down
-```
-
-### Остановить с удалением volume базы
-
-```bash
-docker compose down -v
-```
-
-Это удалит данные Postgres.
+### Преимущества решения
+- управляемый pipeline вместо «чёрного ящика»
+- многоуровневая валидация
+- runtime-проверка кода
+- автоматическое исправление
+- адаптация под LowCode
+- объяснимая confidence-оценка
+- полностью локальная работа

@@ -3,6 +3,7 @@ import { fetchSessionHistory, fetchSessions, sendChatMessage } from "../api/chat
 import type {
   ChatHistoryResponse,
   ChatSessionResponse,
+  ChatGenerateResponse,
   UiMessage,
 } from "../types/chat";
 import {
@@ -17,13 +18,49 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-interface UseChatDataOptions {
-  onRunCreatedOrUpdated?: (sessionId: string) => Promise<void> | void;
+function mergeHistoryWithLatestAssistant(
+  freshHistory: ChatHistoryResponse,
+  latestGenerated: ChatGenerateResponse | null,
+): UiMessage[] {
+  const base = historyToUiMessages(freshHistory);
+
+  if (!latestGenerated) {
+    return base;
+  }
+
+  const hasAssistantInHistory = freshHistory.messages.some(
+    (msg) => msg.role === "assistant" && msg.content.trim().length > 0,
+  );
+
+  if (hasAssistantInHistory) {
+    let attached = false;
+    return base.map((msg) => {
+      if (!attached && msg.role === "assistant") {
+        attached = true;
+        return {
+          ...msg,
+          generated: latestGenerated,
+        };
+      }
+      return msg;
+    });
+  }
+
+  const displayText = buildAssistantDisplayText(latestGenerated);
+
+  return [
+    ...base,
+    {
+      id: `assistant-fallback-${Date.now()}`,
+      role: "assistant",
+      content: displayText,
+      isStreaming: false,
+      generated: latestGenerated,
+    },
+  ];
 }
 
-export function useChatData(options: UseChatDataOptions = {}) {
-  const { onRunCreatedOrUpdated } = options;
-
+export function useChatData() {
   const [sessions, setSessions] = useState<ChatSessionResponse[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [history, setHistory] = useState<ChatHistoryResponse | null>(null);
@@ -112,7 +149,7 @@ export function useChatData(options: UseChatDataOptions = {}) {
       setSessions(data);
       setActiveSessionId(sessionId);
     } catch {
-      // не валим UI
+      // intentionally ignored
     }
   }
 
@@ -237,26 +274,12 @@ export function useChatData(options: UseChatDataOptions = {}) {
 
       await refreshSessionsAndPreserve(result.session_id);
 
-      if (onRunCreatedOrUpdated) {
-        await onRunCreatedOrUpdated(result.session_id);
-      }
-
       const displayText = buildAssistantDisplayText(result);
       await streamAssistantMessage(assistantMessageId, displayText, result);
 
       const freshHistory = await fetchSessionHistory(result.session_id);
       setHistory(freshHistory);
-      setUiMessages(
-        historyToUiMessages(freshHistory).map((msg, index, arr) => {
-          if (index === arr.length - 1 && msg.role === "assistant") {
-            return {
-              ...msg,
-              generated: result,
-            };
-          }
-          return msg;
-        }),
-      );
+      setUiMessages(mergeHistoryWithLatestAssistant(freshHistory, result));
     } catch (error) {
       setSendError(error instanceof Error ? error.message : "Не удалось отправить сообщение");
 

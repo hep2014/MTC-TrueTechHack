@@ -54,8 +54,8 @@
 
 ### Структура проекта
 
-
-mts/
+```
+MTC-TrueTechHack/
 ├── localscript_backend/ # Backend (FastAPI + pipeline)
 │ ├── app/
 │ │ ├── services/ # бизнес-логика и pipeline
@@ -75,6 +75,7 @@ mts/
 ├── docker-compose.yml # базовый стек
 ├── docker-compose.ollama.yml # overlay с LLM
 └── README.md
+```
 
 
 ---

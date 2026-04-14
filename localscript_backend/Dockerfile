@@ -7,14 +7,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends lua5.4 \
+    && apt-get install -y --no-install-recommends \
+        lua5.4 \
+        lua5.4-dev \
+        luarocks \
+        build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 RUN ln -sf /usr/bin/lua5.4 /usr/local/bin/lua \
     && ln -sf /usr/bin/luac5.4 /usr/local/bin/luac
 
+
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 

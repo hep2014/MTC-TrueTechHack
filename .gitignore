@@ -1,0 +1,20 @@
+# global
+.DS_Store
+Thumbs.db
+
+# env
+.env
+
+# docker volumes (если вдруг появятся локально)
+*.pid
+
+# python
+__pycache__/
+*.pyc
+
+# node
+node_modules/
+
+# IDE
+.idea/
+.vscode/

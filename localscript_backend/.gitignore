@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# dotenv
+.env
+
+# Alembic
+alembic/versions/*.pyc
+
+# SQLite (если вдруг)
+*.db
+
+# pytest
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+
+# coverage
+.coverage
+htmlcov/
+
+# temp files
+*.tmp
+*.swp
+
+# Docker
+*.pid

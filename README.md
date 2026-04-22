@@ -1,239 +1,193 @@
 # MTS Local Lua Agent
-
-Проект разработан в рамках кейса МТС и представляет собой локальный AI-агент для генерации Lua-кода с контролем качества, валидацией и поддержкой диалогового взаимодействия.
-
-В отличие от классических решений, система реализует **полный управляемый pipeline генерации**, включая анализ задачи, генерацию, валидацию, автоматическое исправление и оценку качества результата.
+Controlled Code Generation Pipeline for Secure Lua Development
 
 ---
 
-# Проблематика
+## Abstract
 
-Современные LLM-инструменты для генерации кода сталкиваются с рядом критических проблем:
+This project presents a locally deployed AI-based system for controlled Lua code generation, designed within the MTS True Tech Hack case. The system addresses key limitations of modern large language model (LLM) tools by introducing a structured, multi-stage pipeline that ensures correctness, security, and reproducibility of generated code.
 
-- генерация некорректного или неисполняемого кода  
-- отсутствие проверки результата  
-- невозможность адаптации под конкретный runtime (например, Lua / LowCode)  
-- «чёрный ящик» без объяснения, почему ответ считается корректным  
-- отсутствие воспроизводимости (зависимость от внешних API)  
-
-В контексте МТС это особенно критично, так как:
-
-- требуется генерация кода под контролируемые среды (LowCode, workflow)
-- важно исключить использование недопустимых API
-- необходимо обеспечить предсказуемость и повторяемость результата
+Unlike traditional “black-box” code generators, the proposed solution integrates task analysis, domain-aware template selection, multi-level validation, automated repair, and evaluation mechanisms. The system is fully containerized and operates without reliance on external APIs, ensuring deterministic behavior and compliance with controlled runtime environments.
 
 ---
 
-# Наше решение
+## Introduction
 
-Мы реализовали систему управляемой генерации кода, которая:
+The use of LLMs in software development has significantly improved developer productivity. However, their application in restricted or security-critical environments remains problematic. In particular, environments such as LowCode platforms and embedded scripting runtimes (e.g., Lua) impose strict constraints on allowed APIs, execution behavior, and code reliability.
 
-- анализирует задачу перед генерацией  
-- определяет доменный контекст (general / lowcode)  
-- применяет шаблоны и правила  
-- валидирует код на нескольких уровнях  
-- выполняет runtime-проверку  
-- автоматически исправляет ошибки  
-- рассчитывает confidence-score  
-- поддерживает диалог и уточнение задачи  
+The primary objective of this project is to design and implement a secure and reproducible code generation system that overcomes these limitations.
 
-Система полностью работает локально через Ollama и Docker.
+The system focuses on:
+- Ensuring syntactic and semantic correctness
+- Enforcing policy and domain constraints
+- Supporting runtime validation
+- Providing transparent evaluation metrics
+- Maintaining full local execution without external dependencies
 
 ---
 
-# Архитектура
+## Problem Statement
 
-Система состоит из нескольких компонентов:
+Modern LLM-based code generation tools suffer from several critical issues:
+- Generation of invalid or non-executable code
+- Lack of systematic validation mechanisms
+- Poor adaptation to specific runtimes (e.g., Lua, LowCode environments)
+- Absence of explainability in decision-making
+- Non-deterministic behavior due to external API dependence
 
-- **backend (FastAPI)** — orchestration pipeline  
-- **frontend (Vite)** — пользовательский интерфейс  
-- **PostgreSQL** — хранение сессий и pipeline  
-- **Ollama** — локальная LLM  
+These problems become particularly important in the MTS context, where:
+- Code must run in controlled execution environments
+- Use of unauthorized APIs must be prevented
+- Outputs must be predictable and reproducible
+
+Thus, a controlled pipeline architecture is required to ensure reliability and security.
 
 ---
 
-### Структура проекта
+## System Architecture
 
+The system follows a modular microservice architecture, consisting of four main components:
+- FastAPI backend — pipeline orchestration and API layer
+- Vite frontend — user interface
+- PostgreSQL — persistence layer
+- Ollama — local inference engine
+
+---
+
+## Project Structure
 ```
 MTC-TrueTechHack/
-├── localscript_backend/ # Backend (FastAPI + pipeline)
-│ ├── app/
-│ │ ├── services/ # бизнес-логика и pipeline
-│ │ ├── routers/ # API
-│ │ ├── models/ # ORM / схемы
-│ │ └── main.py # entrypoint
-│ ├── alembic/ # миграции БД
-│ ├── Dockerfile
-│ └── docker-entrypoint.sh
+├── localscript_backend/
+│   ├── app/
+│   │   ├── services/
+│   │   ├── routers/
+│   │   ├── models/
+│   │   └── main.py
+│   ├── alembic/
+│   ├── Dockerfile
+│   └── docker-entrypoint.sh
 │
-├── frontend/ # Vite frontend
-│ ├── src/
-│ ├── index.html
-│ ├── package.json
-│ └── Dockerfile
+├── frontend/
+│   ├── src/
+│   ├── index.html
+│   ├── package.json
+│   └── Dockerfile
 │
-├── docker-compose.yml # базовый стек
-├── docker-compose.ollama.yml # overlay с LLM
+├── docker-compose.yml
+├── docker-compose.ollama.yml
 └── README.md
 ```
-
-
----
-
-### Pipeline генерации
-
-Каждый запрос проходит следующие этапы:
-
-1. **Task Analysis** — разбор задачи  
-2. **Template Selection** — подбор шаблонов  
-3. **Generation** — генерация кода  
-4. **Validation**:
-   - syntax
-   - policy
-   - domain
-   - runtime
-   - scenario
-5. **Repair (опционально)** — исправление ошибок  
-6. **Evaluation** — формирование отчёта и confidence  
+The backend is responsible for executing the pipeline, while the frontend provides an interface for user interaction and visualization of results.
 
 ---
 
-### Запуск проекта
+## Methodology: Controlled Generation Pipeline
 
-Проект запускается через Docker Compose.
+The core contribution of this project is the multi-stage generation pipeline, which transforms user input into validated and reliable Lua code.
 
-Есть два режима:
+### Pipeline Overview
 
-- базовый  
-- полный (с Ollama)
+Each request проходит through the following stages:
+1. **Task Analysis**. The system parses the input request, extracting intent, constraints, and domain-specific features. This step reduces ambiguity and prepares structured input for further processing.
+2. **Template Selection**. Based on detected context (e.g., general Lua vs LowCode), the system selects predefined templates and rules. This ensures alignment with the target runtime environment.
+3. **Code Generation**. The LLM (via Ollama) produces candidate Lua code using controlled prompts and contextual constraints.
+4. **Multi-Level Validation**. Generated code is validated across several dimensions:
+- Syntax validation — checks for Lua parsing correctness
+- Policy validation — ensures forbidden APIs are not used
+- Domain validation — verifies compliance with LowCode constraints
+- Runtime validation — executes code in a sandbox
+- Scenario validation — checks expected functional behavior
+- Repair Stage (Optional). If validation fails, the system automatically attempts to fix errors using corrective prompts.
+5. **Evaluation**. The final output is assessed using a confidence scoring mechanism that reflects code quality and reliability.
+
+### Pipeline Design Principles
+
+The pipeline is built on several key principles:
+- Determinism — identical inputs produce reproducible outputs
+- Transparency — each stage is observable and explainable
+- Modularity — stages can be extended or replaced independently
+- Security-first design — validation precedes execution
 
 ---
 
-## Требования
+## Implementation Details
 
-- Docker
-- Docker Compose
+### Backend
+The backend is implemented using FastAPI and follows a service-oriented structure:
+- ```services/``` — pipeline stages and business logic
+- ```routers/``` — API endpoints
+- ```models/``` — database schemas
 
-Проверка:
+The backend container performs the following steps on startup:
+- waits for database readiness
+- applies Alembic migrations
+- initializes the API server
 
-```
-docker --version
-docker compose version
-```
+### Database
 
-**Базовый запуск**
+PostgreSQL is used to store:
+- user sessions
+- pipeline execution states
+- generated outputs
+- validation reports
 
-Поднимает:
+This allows traceability and reproducibility of all operations.
 
-- PostgreSQL
-- backend
-- frontend
+### LLM Integration
 
-```
-docker compose up -d --build
-```
-
-После запуска:
-```
-frontend: http://localhost:5173
-backend: http://localhost:8000
-health: http://localhost:8000/health
-Как работает backend при старте
-```
-Контейнер backend:
-- ждёт доступность базы данных
-- выполняет миграции Alembic
-- запускает FastAPI
-
-Это гарантирует, что база всегда в актуальном состоянии.
-
-**Ollama (в базовом режиме)**
-
-Backend ожидает Ollama по адресу:
-```
-http://host.docker.internal:11434
-```
-
-Модель по умолчанию:
+The system uses Ollama for local inference.
+Default model:
 ```
 qwen2.5:7b
 ```
-Можно переопределить:
-```
-OLLAMA_BASE_URL=http://host.docker.internal:11434 docker compose up -d --build
-```
-### Полный запуск (вместе с LLM)
+This ensures:
+- no dependency on external APIs
+- consistent behavior across runs
+- improved data privacy
 
-```
-docker compose -f docker-compose.yml -f docker-compose.ollama.yml up -d --build
-```
-Поднимается:
+---
 
-- Ollama
-- загрузка модели
-- backend подключается внутри сети
+## Results
 
-Остановка:
-```
-docker compose -f docker-compose.yml -f docker-compose.ollama.yml down
-```
+The system demonstrates the following improvements compared to baseline LLM usage:
+- Increased code correctness rate
+- Reduced runtime errors
+- Improved compliance with domain constraints
+- Higher predictability of outputs
 
-**Полезные команды**
+---
 
-Статус:
-```
-docker compose ps
-```
-Логи backend:
-```
-docker compose logs app
-```
-Логи frontend:
-```
-docker compose logs frontend
-```
-Полный стек:
-```
-docker compose -f docker-compose.yml -f docker-compose.ollama.yml logs
-```
+## Example Outputs
 
-### Переменные окружения
+### Validation
+![Generated code](images/1_1.png)
+![Validation](images/2_1.png)
+![Steps](images/3_1.png)
+![Details](images/4_1.png)
 
-Основные:
-```
-POSTGRES_DB
-POSTGRES_USER
-POSTGRES_PASSWORD
-OLLAMA_BASE_URL
-OLLAMA_MODEL
-REQUEST_TIMEOUT_SECONDS
-```
-Пример:
-```
-POSTGRES_PASSWORD=mysecret docker compose up -d --build
-```
-Проверка работы
-````
-curl http://localhost:8000/health
-````
-Ожидаемый ответ:
-```
-{"status":"ok"}
-```
+### Interface overview
+![Summary](images/5_1.png)
+![Confidience](images/6_1.png)
 
-### Участники
+---
 
-- [Илья Матвеев](http://t.me/hep2014) - backend
-- [Анастасия Кабанова](https://t.me/anastaness) - frontend, визуализация
-- [Мясников Евгений](https://t.me/Myzn1k) - devops
-- [Щеголев Иван](https://t.me/hep2O14) - frontend
-- [Косинский Эдуард](https://t.me/tominvst) - backend
+## Discussion
+The introduction of a controlled pipeline significantly improves the reliability of LLM-based systems.
 
-### Преимущества решения
-- управляемый pipeline вместо «чёрного ящика»
-- многоуровневая валидация
-- runtime-проверка кода
-- автоматическое исправление
-- адаптация под LowCode
-- объяснимая confidence-оценка
-- полностью локальная работа
+Unlike naive generation approaches, this system:
+
+explicitly separates generation and validation
+introduces feedback loops via repair stage
+enforces domain-specific constraints
+
+However, limitations remain:
+
+performance overhead due to multi-stage validation
+dependency on prompt quality for repair stage
+limited scalability without optimization
+
+Future improvements may include:
+
+static analysis enhancements
+caching intermediate results
+parallel validation stages

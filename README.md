@@ -175,19 +175,73 @@ The system demonstrates the following improvements compared to baseline LLM usag
 The introduction of a controlled pipeline significantly improves the reliability of LLM-based systems.
 
 Unlike naive generation approaches, this system:
-
-explicitly separates generation and validation
-introduces feedback loops via repair stage
-enforces domain-specific constraints
-
+- explicitly separates generation and validation
+- introduces feedback loops via repair stage
+- enforces domain-specific constraints
 However, limitations remain:
+- performance overhead due to multi-stage validation
+- dependency on prompt quality for repair stage
+- limited scalability without optimization
 
-performance overhead due to multi-stage validation
-dependency on prompt quality for repair stage
-limited scalability without optimization
+---
 
+## Conclusion
+
+This project demonstrates that LLM-based code generation can be made reliable and secure when combined with a structured pipeline architecture.
+
+The system achieves:
+- controlled and explainable generation
+- robust validation mechanisms
+- full local deployment
+
+These properties make it suitable for enterprise environments, particularly where security and reproducibility are critical.
 Future improvements may include:
+- static analysis enhancements
+- caching intermediate results
+- parallel validation stages
 
-static analysis enhancements
-caching intermediate results
-parallel validation stages
+---
+
+## Deployment Guide
+
+### Requirements
+
+- Docker
+- Docker compose
+
+### Basic Setup
+```
+docker compose up -d --build
+```
+### Access:
+
+- Frontend: http://localhost:5173  
+- Backend: http://localhost:8000  
+- Health:  http://localhost:8000/health
+
+### Full Setup with LLM
+```
+docker compose -f docker-compose.yml -f docker-compose.ollama.yml up -d --build
+```
+
+--- 
+
+### Environment Variables
+```
+POSTGRES_DB
+POSTGRES_USER
+POSTGRES_PASSWORD
+OLLAMA_BASE_URL
+OLLAMA_MODEL
+REQUEST_TIMEOUT_SECONDS
+```
+
+---
+
+### Team
+
+- [Илья Матвеев](http://t.me/hep2014) - pipeline setup, backend, llm user
+- [Анастасия Кабанова](https://t.me/anastaness) - deep learning
+- [Мясников Евгений](https://t.me/Myzn1k) - data engineering
+- [Щеголев Иван](https://t.me/hep2O14) - frontend developer
+- [Косинский Эдуард](https://t.me/tominvst) - backend developer
